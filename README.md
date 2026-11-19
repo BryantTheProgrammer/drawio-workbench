@@ -133,7 +133,7 @@ This loads the plugin only in the current tab. Repeat after reloading or opening
 | Rename | Double-click the page, or hover and click **✎** |
 | Duplicate | Hover and click **⧉** |
 | Delete | Hover and click **🗑** |
-| Set status / phase | Hover and click **⚑**; choose Draft, Review, or Ready and enter a phase |
+| Set status / phase | Hover and click **⚑**; choose Proposed, Wireframed, Drafting, Staged, or Deployed and enter a phase |
 | Reorder / move between sections | Drag the page; drop on a section header to move to the end of it |
 
 Status and phase are stored as page metadata in the diagram file, so they travel with the drawing. Use **Clear** in the page details editor to remove both values, then **Save**. These metadata edits are saved with the diagram but are not part of draw.io's **Ctrl+Z** history.

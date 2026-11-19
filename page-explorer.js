@@ -22,6 +22,7 @@ Draw.loadPlugin(function (ui) {
     var MIN_WIDTH = 180;
     var MAX_WIDTH = 500;
     var DEFAULTS = { visible: true, collapsed: {}, left: 70, top: 80, width: 260, dock: 'left' };
+    var PAGE_STATUS_OPTIONS = ['Proposed', 'Wireframed', 'Drafting', 'Staged', 'Deployed'];
 
     // ---------- Persisted state ----------
     function cloneDefaults() { return JSON.parse(JSON.stringify(DEFAULTS)); }
@@ -624,8 +625,11 @@ Draw.loadPlugin(function (ui) {
     metadataOverlay.innerHTML = '<form class="pe-meta-dialog" role="dialog" aria-modal="true" aria-labelledby="pe-meta-title">' +
         '<h2 id="pe-meta-title">Page details</h2>' +
         '<label class="pe-meta-field"><span>Status</span><select name="status">' +
-        '<option value="">No status</option><option value="Draft">Draft</option>' +
-        '<option value="Review">Review</option><option value="Ready">Ready</option></select></label>' +
+        '<option value="">No status</option>' +
+        PAGE_STATUS_OPTIONS.map(function (status) {
+            return '<option value="' + status + '">' + status + '</option>';
+        }).join('') +
+        '</select></label>' +
         '<label class="pe-meta-field"><span>Phase</span><input name="phase" type="text" maxlength="80" placeholder="e.g. Phase 1"></label>' +
         '<div class="pe-meta-buttons"><button type="button" data-action="clear">Clear</button>' +
         '<button type="button" data-action="cancel">Cancel</button><button type="submit">Save</button></div>' +
@@ -648,7 +652,19 @@ Draw.loadPlugin(function (ui) {
             return;
         }
         metadataPage = item.page;
-        metadataStatus.value = item.page.node.getAttribute('pe-status') || '';
+        var currentStatus = item.page.node.getAttribute('pe-status') || '';
+        if (currentStatus && PAGE_STATUS_OPTIONS.indexOf(currentStatus) < 0) {
+            var existingOption = Array.prototype.slice.call(metadataStatus.options).filter(function (option) {
+                return option.value === currentStatus;
+            })[0];
+            if (!existingOption) {
+                var legacyOption = document.createElement('option');
+                legacyOption.value = currentStatus;
+                legacyOption.textContent = currentStatus + ' (existing)';
+                metadataStatus.appendChild(legacyOption);
+            }
+        }
+        metadataStatus.value = currentStatus;
         metadataPhase.value = item.page.node.getAttribute('pe-phase') || '';
         metadataForm.querySelector('h2').textContent = 'Page details: ' + item.label;
         metadataOverlay.style.display = 'flex';
