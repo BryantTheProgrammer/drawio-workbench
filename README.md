@@ -120,9 +120,12 @@ This loads the plugin only in the current tab. Repeat after reloading or opening
 | Show / hide | **Ctrl+Shift+E**, the **☰ Pages** tab on the left edge, or **Extras → Page Explorer** |
 | Dock left / right / floating | Dock button in the panel header, or **Extras → Page Explorer: Change Dock** |
 | Resize | Drag the panel's inner edge |
+| Organize by phase | Toggle **Group by phase** below the header; pages without a phase appear under **(No phase)** |
 | Filter | Type in the search box to match page names, sections, status, or phase; **Enter** opens the first match |
 | Expand / collapse all | **⊞ / ⊟** in the header |
 | Reset panel layout | **Extras → Page Explorer: Reset Layout** |
+
+Grouping by phase only changes how pages are displayed; it does not change their sections or page order. Turn the toggle off to return to section grouping.
 
 ### Pages
 

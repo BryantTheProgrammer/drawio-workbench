@@ -21,7 +21,7 @@ Draw.loadPlugin(function (ui) {
     var PREFIX_SEPARATOR = ' / ';
     var MIN_WIDTH = 180;
     var MAX_WIDTH = 500;
-    var DEFAULTS = { visible: true, collapsed: {}, left: 70, top: 80, width: 260, dock: 'left' };
+    var DEFAULTS = { visible: true, collapsed: {}, left: 70, top: 80, width: 260, dock: 'left', groupByPhase: false };
     var PAGE_STATUS_OPTIONS = ['Proposed', 'Wireframed', 'Drafting', 'Staged', 'Deployed'];
 
     // ---------- Persisted state ----------
@@ -492,6 +492,8 @@ Draw.loadPlugin(function (ui) {
         '.pe-header span{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}',
         '.pe-icon{border:0;background:transparent;color:inherit;cursor:pointer;padding:2px 6px;border-radius:3px;font-size:13px}',
         '.pe-icon:hover{background:rgba(0,0,0,.1)}',
+        '.pe-view-toggle{display:flex;align-items:center;gap:6px;margin:0 8px 4px;font-size:12px;cursor:pointer}',
+        '.pe-view-toggle input{margin:0}',
         '.pe-search{margin:6px 8px;padding:5px 7px;border:1px solid #bbb;border-radius:4px;font-size:12px;',
         '  background:inherit;color:inherit}',
         '.pe-body{flex:1;overflow:auto;padding:0 4px 6px}',
@@ -585,6 +587,19 @@ Draw.loadPlugin(function (ui) {
     header.appendChild(dockBtn);
     header.appendChild(iconButton('✕', 'Hide - reopen with the Pages tab or Ctrl+Shift+E', function () { setVisible(false); }));
 
+    var phaseToggleLabel = document.createElement('label');
+    phaseToggleLabel.className = 'pe-view-toggle';
+    var phaseToggle = document.createElement('input');
+    phaseToggle.type = 'checkbox';
+    phaseToggle.checked = !!state.groupByPhase;
+    phaseToggle.addEventListener('change', function () {
+        state.groupByPhase = phaseToggle.checked;
+        saveState();
+        render();
+    });
+    phaseToggleLabel.appendChild(phaseToggle);
+    phaseToggleLabel.appendChild(document.createTextNode('Group by phase'));
+
     var search = document.createElement('input');
     search.className = 'pe-search';
     search.type = 'search';
@@ -606,6 +621,7 @@ Draw.loadPlugin(function (ui) {
     grip.className = 'pe-grip';
 
     panel.appendChild(header);
+    panel.appendChild(phaseToggleLabel);
     panel.appendChild(search);
     panel.appendChild(body);
     panel.appendChild(grip);
@@ -707,8 +723,33 @@ Draw.loadPlugin(function (ui) {
     });
 
     // ---------- Tree rendering ----------
+    function buildDisplayGroups() {
+        var tree = buildTree();
+        if (!state.groupByPhase) {
+            return tree.order.map(function (name) {
+                return { key: name, label: name, items: tree.groups[name], isSection: true };
+            });
+        }
+
+        var groups = {};
+        var order = [];
+        tree.order.forEach(function (name) {
+            tree.groups[name].forEach(function (item) {
+                var phase = item.page.node && item.page.node.getAttribute('pe-phase');
+                phase = phase && phase.trim();
+                var key = 'phase:' + (phase || '');
+                if (!groups[key]) {
+                    groups[key] = { key: key, label: phase || '(No phase)', items: [] };
+                    order.push(key);
+                }
+                groups[key].items.push(item);
+            });
+        });
+        return order.map(function (key) { return groups[key]; });
+    }
+
     function setAllCollapsed(value) {
-        buildTree().order.forEach(function (g) { state.collapsed[g] = value; });
+        buildDisplayGroups().forEach(function (group) { state.collapsed[group.key] = value; });
         saveState();
         render();
     }
@@ -771,10 +812,11 @@ Draw.loadPlugin(function (ui) {
         panel.classList.toggle('pe-dark', isDark());
         body.innerHTML = '';
         var filter = search.value.trim().toLowerCase();
-        var tree = buildTree();
+        var displayGroups = buildDisplayGroups();
 
-        tree.order.forEach(function (groupName) {
-            var items = tree.groups[groupName].filter(function (item) {
+        displayGroups.forEach(function (group) {
+            var groupName = group.label;
+            var items = group.items.filter(function (item) {
                 return !filter || item.label.toLowerCase().indexOf(filter) >= 0 ||
                     groupName.toLowerCase().indexOf(filter) >= 0 ||
                     (item.page.node && ((item.page.node.getAttribute('pe-status') || '').toLowerCase().indexOf(filter) >= 0 ||
@@ -783,7 +825,7 @@ Draw.loadPlugin(function (ui) {
             if (items.length === 0) { return; }
 
             var hasActive = items.some(function (i) { return i.page === ui.currentPage; });
-            var collapsed = !filter && state.collapsed[groupName] && !hasActive;
+            var collapsed = !filter && state.collapsed[group.key] && !hasActive;
 
             var gBtn = document.createElement('button');
             gBtn.type = 'button';
@@ -798,15 +840,17 @@ Draw.loadPlugin(function (ui) {
             count.textContent = items.length;
             gBtn.appendChild(count);
 
-            var add = document.createElement('span');
-            add.className = 'pe-add';
-            add.textContent = '+';
-            add.title = 'Add page to ' + groupName;
-            add.addEventListener('click', function (e) {
-                e.stopPropagation();
-                addPage(groupName);
-            });
-            gBtn.appendChild(add);
+            if (group.isSection) {
+                var add = document.createElement('span');
+                add.className = 'pe-add';
+                add.textContent = '+';
+                add.title = 'Add page to ' + groupName;
+                add.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    addPage(groupName);
+                });
+                gBtn.appendChild(add);
+            }
 
             function sectionAction(icon, tip, fn, cls) {
                 var a = document.createElement('span');
@@ -818,15 +862,18 @@ Draw.loadPlugin(function (ui) {
                 a.addEventListener('click', function (e) { e.stopPropagation(); fn(); });
                 gBtn.appendChild(a);
             }
-            if (groupName !== UNGROUPED) {
+            if (group.isSection && groupName !== UNGROUPED) {
                 sectionAction('\u270E', 'Rename section', function () { startSectionRename(gBtn, groupName); });
             }
-            sectionAction('\u29C9', 'Duplicate section', function () { duplicateSection(groupName); });
-            sectionAction('\uD83D\uDDD1', 'Delete section and its pages', function () { deleteSection(groupName); }, 'pe-danger');
+            if (group.isSection) {
+                sectionAction('\u29C9', 'Duplicate section', function () { duplicateSection(groupName); });
+                sectionAction('\uD83D\uDDD1', 'Delete section and its pages', function () { deleteSection(groupName); }, 'pe-danger');
+            }
 
             // Drag a section header to reorder sections (disabled while filtering)
-            gBtn.draggable = !filter;
+            gBtn.draggable = group.isSection && !filter;
             gBtn.addEventListener('dragstart', function (e) {
+                if (!group.isSection) { e.preventDefault(); return; }
                 dragGroup = groupName;
                 gBtn.classList.add('pe-dragging');
                 e.dataTransfer.effectAllowed = 'move';
@@ -841,9 +888,10 @@ Draw.loadPlugin(function (ui) {
 
             gBtn.addEventListener('dragover', function (e) {
                 if (dragPage) {                                  // page -> end of this section
+                    if (!group.isSection) { return; }
                     e.preventDefault();
                     gBtn.classList.add('pe-drop-into');
-                } else if (dragGroup && dragGroup !== groupName) { // section -> before/after this one
+                } else if (group.isSection && dragGroup && dragGroup !== groupName) { // section -> before/after this one
                     e.preventDefault();
                     var r = gBtn.getBoundingClientRect();
                     var after = e.clientY > r.top + r.height / 2;
@@ -856,6 +904,7 @@ Draw.loadPlugin(function (ui) {
                 e.preventDefault();
                 var after = gBtn.classList.contains('pe-drop-after');
                 clearDrop();
+                if (!group.isSection) { return; }
                 if (dragGroup) {
                     var g = dragGroup;
                     dragGroup = null;
@@ -863,13 +912,13 @@ Draw.loadPlugin(function (ui) {
                     return;
                 }
                 if (!dragPage) { return; }
-                var all = tree.groups[groupName].filter(function (i) { return i.page !== dragPage; });
+                var all = group.items.filter(function (i) { return i.page !== dragPage; });
                 var at = all.length ? pageIndex(all[all.length - 1].page) + 1 : pageIndex(dragPage);
                 dropPage(dragPage, at, groupName);
             });
 
             gBtn.addEventListener('click', function () {
-                state.collapsed[groupName] = !collapsed;
+                state.collapsed[group.key] = !collapsed;
                 saveState();
                 render();
             });
@@ -934,7 +983,7 @@ Draw.loadPlugin(function (ui) {
                 });
 
                 // Drag & drop reordering (disabled while filtering)
-                pBtn.draggable = !filter;
+                pBtn.draggable = !filter && !state.groupByPhase;
                 pBtn.addEventListener('dragstart', function (e) {
                     dragPage = item.page;
                     pBtn.classList.add('pe-dragging');
@@ -946,7 +995,7 @@ Draw.loadPlugin(function (ui) {
                     pBtn.classList.remove('pe-dragging');
                 });
                 pBtn.addEventListener('dragover', function (e) {
-                    if (!dragPage || dragPage === item.page) { return; }
+                    if (state.groupByPhase || !dragPage || dragPage === item.page) { return; }
                     e.preventDefault();
                     var r = pBtn.getBoundingClientRect();
                     var after = e.clientY > r.top + r.height / 2;
@@ -958,6 +1007,7 @@ Draw.loadPlugin(function (ui) {
                 });
                 pBtn.addEventListener('drop', function (e) {
                     e.preventDefault();
+                    if (state.groupByPhase) { return; }
                     var after = pBtn.classList.contains('pe-drop-after');
                     pBtn.classList.remove('pe-drop-after', 'pe-drop-before');
                     if (dragPage && dragPage !== item.page) {
